@@ -12,7 +12,7 @@ pipeline {
 
     environment {
         DOCKERHUB_USERNAME = 'sakit333'
-        DOCKER_IMAGE = '${env.JOB_NAME}'
+        DOCKER_IMAGE = "${env.JOB_NAME}"
     }
 
     stages {
