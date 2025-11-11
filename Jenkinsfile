@@ -13,6 +13,7 @@ pipeline {
     environment {
         DOCKERHUB_USERNAME = 'sakit333'
         DOCKER_IMAGE = "${env.JOB_NAME}"
+        DOCKER_COMPOSE_FILE = "docker-compose.yml"
     }
 
     stages {
@@ -27,18 +28,19 @@ pipeline {
                 sh 'mvn clean package -Dskiptests'
             }
         }
-        stage('Build the Docker images') {
-            when{
+        stage('Deploy Containers to Dev Env') {
+            when {
                 allOf {
                     expression { params.DEPLOY_ENV == 'dev' }
                     expression { params.ACTION == 'deploy' }
-                }        
+                }
             }
             steps {
-                sh 'sudo docker build -t ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE}:latest .'
+                echo "Deploying Docker containers using Compose..."
+                sh "sudo docker-compose -f ${DOCKER_COMPOSE_FILE} up -d --build"
             }
         }
-        stage('Remove the docker images') {
+        stage('Remove Containers from Dev Env') {
             when {
                 allOf {
                     expression { params.DEPLOY_ENV == 'dev' }
@@ -46,13 +48,48 @@ pipeline {
                 }
             }
             steps {
-                echo "Removing all the images Locally....!!!!"
-                sh '''
-                sudo docker rmi ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE}:latest || echo "Image not found, skipping..."
-                sudo docker system prune -af
-                '''
+                echo "Stopping and removing containers and volumes..."
+                sh "docker-compose -f ${DOCKER_COMPOSE_FILE} down -v"
             }
         }
+        stage('Cleanup Old Images') {
+            when {
+                allOf {
+                    expression { params.DEPLOY_ENV == 'dev' }
+                    expression { params.ACTION == 'remove' }
+                }
+            }
+            steps {
+                echo "Cleaning up old Docker images..."
+                sh "docker image prune -af"
+            }
+        }
+        // stage('Build the Docker images') {
+        //     when{
+        //         allOf {
+        //             expression { params.DEPLOY_ENV == 'dev' }
+        //             expression { params.ACTION == 'deploy' }
+        //         }        
+        //     }
+        //     steps {
+        //         sh 'sudo docker build -t ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE}:latest .'
+        //     }
+        // }
+        // stage('Remove the docker images') {
+        //     when {
+        //         allOf {
+        //             expression { params.DEPLOY_ENV == 'dev' }
+        //             expression { params.ACTION == 'remove' }
+        //         }
+        //     }
+        //     steps {
+        //         echo "Removing all the images Locally....!!!!"
+        //         sh '''
+        //         sudo docker rmi ${DOCKERHUB_USERNAME}/${DOCKER_IMAGE}:latest || echo "Image not found, skipping..."
+        //         sudo docker system prune -af
+        //         '''
+        //     }
+        // }
         stage('Remove Jar Build') {
             when {
                 allOf {
