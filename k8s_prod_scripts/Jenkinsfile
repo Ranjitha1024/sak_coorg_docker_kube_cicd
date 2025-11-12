@@ -2,23 +2,22 @@ pipeline {
     agent any
 
     environment {
-        K8S_NAMESPACE = 'springapp-ns'
-        APP_NAME = 'spring-app'
-        DB_NAME = 'mysql-db'
+        K8S_NAMESPACE = 'sak-shetty'
+        APP_NAME = 'springapp'
+        DB_NAME = 'mysql'
         APP_IMAGE = 'sakit333/webapp_dev:latest'
         DB_IMAGE = 'mysql:8.0'
-        APP_PORT = '8088'
+        APP_PORT = '8080'
         NODE_PORT = '30088'
-        DB_PASSWORD = '1234'
-        DB_NAME_MYSQL = 'myapplication'
+        DB_PASSWORD = 'password'
+        DB_NAME_MYSQL = 'springdb'
         KUBE_PROJECT_DIR = 'k8s_prod_scripts'
-        //  Kubeconfig path directly on Jenkins server
+        // Path to kubeconfig already placed on Jenkins server by your setup script
         KUBECONFIG = '/home/jenkins/kubeconfig_for_jenkins/kubeconfig.yaml'
     }
 
     parameters {
-        choice(name: 'ACTION', choices: ['deploy', 'remove'], description: 'Choose to deploy or remove resources')
-        // booleanParam(name: 'DEPLOY_APP', defaultValue: true, description: 'Deploy Spring Boot app?')
+        choice(name: 'ACTION', choices: ['deploy', 'remove'], description: 'Choose whether to deploy or remove resources')
     }
 
     stages {
@@ -26,9 +25,9 @@ pipeline {
         stage('Verify Kubernetes Access') {
             steps {
                 sh '''
-                    echo "Verifying access to Kubernetes cluster..."
-                    kubectl config view
-                    kubectl get nodes
+                    echo "🔍 Verifying access to Kubernetes cluster..."
+                    kubectl --kubeconfig=$KUBECONFIG config view
+                    kubectl --kubeconfig=$KUBECONFIG get nodes
                 '''
             }
         }
@@ -39,11 +38,12 @@ pipeline {
             }
             steps {
                 sh '''
-                    if ! kubectl get namespace $K8S_NAMESPACE >/dev/null 2>&1; then
-                        kubectl apply -f $KUBE_PROJECT_DIR/namespace.yml
-                        echo "Namespace created."
+                    echo "📦 Ensuring namespace exists..."
+                    if ! kubectl --kubeconfig=$KUBECONFIG get namespace $K8S_NAMESPACE >/dev/null 2>&1; then
+                        kubectl --kubeconfig=$KUBECONFIG apply -f $KUBE_PROJECT_DIR/namespace.yml
+                        echo "✅ Namespace created: $K8S_NAMESPACE"
                     else
-                        echo "Namespace already exists, skipping..."
+                        echo "ℹ️ Namespace $K8S_NAMESPACE already exists. Skipping..."
                     fi
                 '''
             }
@@ -54,55 +54,58 @@ pipeline {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
-                sh 'kubectl apply -f $KUBE_PROJECT_DIR/db_deploy_svc.yml -n $K8S_NAMESPACE'
+                sh '''
+                    echo "🚀 Deploying MySQL..."
+                    kubectl --kubeconfig=$KUBECONFIG apply -f $KUBE_PROJECT_DIR/db_deploy_svc.yml -n $K8S_NAMESPACE
+                '''
             }
         }
 
         stage('Wait for MySQL Ready') {
             when {
-                allOf {
-                    expression { params.ACTION == 'deploy' }
-                    // expression { params.DEPLOY_APP == true }
-                }
+                expression { params.ACTION == 'deploy' }
             }
             steps {
                 sh '''
-                    echo "Waiting for MySQL pod to be ready..."
-                    kubectl wait --for=condition=ready pod -l app=$DB_NAME -n $K8S_NAMESPACE --timeout=180s
+                    echo "⏳ Waiting for MySQL pod to be ready..."
+                    kubectl --kubeconfig=$KUBECONFIG wait --for=condition=ready pod -l app=mysql -n $K8S_NAMESPACE --timeout=180s
                 '''
             }
         }
 
         stage('Deploy Spring Boot App') {
             when {
-                allOf {
-                    expression { params.ACTION == 'deploy' }
-                    // expression { params.DEPLOY_APP == true }
-                }
+                expression { params.ACTION == 'deploy' }
             }
             steps {
-                sh 'kubectl apply -f $KUBE_PROJECT_DIR/app_deploy_svc.yml -n $K8S_NAMESPACE'
+                sh '''
+                    echo "🚀 Deploying Spring Boot App..."
+                    kubectl --kubeconfig=$KUBECONFIG apply -f $KUBE_PROJECT_DIR/app_deploy_svc.yml -n $K8S_NAMESPACE
+                '''
             }
         }
 
-        stage('Show Resources') {
+        stage('Show Resources After Deployment') {
             when {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
-                sh 'kubectl get all -n $K8S_NAMESPACE'
+                sh '''
+                    echo "📊 Showing resources after deployment..."
+                    kubectl --kubeconfig=$KUBECONFIG get all -n $K8S_NAMESPACE
+                '''
             }
         }
 
         stage('Remove Spring Boot App') {
             when {
-                allOf {
-                    expression { params.ACTION == 'remove' }
-                    // expression { params.DEPLOY_APP == true }
-                }
+                expression { params.ACTION == 'remove' }
             }
             steps {
-                sh 'kubectl delete -f $KUBE_PROJECT_DIR/app_deploy_svc.yml -n $K8S_NAMESPACE || true'
+                sh '''
+                    echo "🧹 Removing Spring Boot app..."
+                    kubectl --kubeconfig=$KUBECONFIG delete -f $KUBE_PROJECT_DIR/app_deploy_svc.yml -n $K8S_NAMESPACE || true
+                '''
             }
         }
 
@@ -111,7 +114,10 @@ pipeline {
                 expression { params.ACTION == 'remove' }
             }
             steps {
-                sh 'kubectl delete -f $KUBE_PROJECT_DIR/db_deploy_svc.yml -n $K8S_NAMESPACE || true'
+                sh '''
+                    echo "🧹 Removing MySQL..."
+                    kubectl --kubeconfig=$KUBECONFIG delete -f $KUBE_PROJECT_DIR/db_deploy_svc.yml -n $K8S_NAMESPACE || true
+                '''
             }
         }
 
@@ -120,7 +126,10 @@ pipeline {
                 expression { params.ACTION == 'remove' }
             }
             steps {
-                sh 'kubectl delete -f $KUBE_PROJECT_DIR/namespace.yml || true'
+                sh '''
+                    echo "🧹 Deleting namespace..."
+                    kubectl --kubeconfig=$KUBECONFIG delete -f $KUBE_PROJECT_DIR/namespace.yml || true
+                '''
             }
         }
 
@@ -129,14 +138,17 @@ pipeline {
                 expression { params.ACTION == 'remove' }
             }
             steps {
-                sh 'kubectl get all -n $K8S_NAMESPACE || echo "Namespace deleted."'
+                sh '''
+                    echo "📊 Checking if namespace still exists..."
+                    kubectl --kubeconfig=$KUBECONFIG get all -n $K8S_NAMESPACE || echo "✅ Namespace deleted successfully."
+                '''
             }
         }
     }
 
     post {
         always {
-            echo "✅ Pipeline execution completed."
+            echo "✅ Jenkins Pipeline execution completed."
         }
     }
 }

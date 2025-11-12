@@ -24,6 +24,10 @@ spec:
       labels:
         app: springapp
     spec:
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox
+          command: ['sh', '-c', 'until nc -z mysql 3306; do echo waiting for mysql; sleep 5; done;']
       containers:
         - name: springapp
           image: sakit333/webapp_dev:latest
@@ -39,10 +43,6 @@ spec:
                 secretKeyRef:
                   name: mysql-secret
                   key: MYSQL_ROOT_PASSWORD
-      initContainers:
-        - name: wait-for-mysql
-          image: busybox
-          command: ['sh', '-c', 'until nc -z mysql 3306; do echo waiting for mysql; sleep 5; done;']
 ---
 apiVersion: v1
 kind: Service

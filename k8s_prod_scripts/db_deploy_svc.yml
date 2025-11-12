@@ -14,7 +14,7 @@ metadata:
 type: Opaque
 data:
   MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ=  # base64 of "password"
-  MYSQL_DATABASE: c3ByaW5ndb  # base64 of "springdb"
+  MYSQL_DATABASE: c3ByaW5nZGI=       # base64 of "springdb"
 
 ---
 apiVersion: apps/v1
